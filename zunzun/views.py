@@ -230,26 +230,7 @@ Load > %s means the server cores each average 100%% CPU with multiple users.
 def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', inEquationName=''): # from urls.py, inDimensionality can only be '1', '2' or '3'
     import os, sys, time
 
-    if -1 != request.path.find('FitEquation__1___/') or -1 != request.path.find('Equation/'): # redundant but explicit
-        if -1 != request.path.find('UserDefinedFunction'):
-            LRP = LongRunningProcess.FitUserDefinedFunction.FitUserDefinedFunction()
-        elif -1 != request.path.find('User-Selectable Polyfunctional'):
-            LRP = LongRunningProcess.FitUserSelectablePolyfunctional.FitUserSelectablePolyfunctional()
-        elif -1 != request.path.find('User-Selectable Polynomial'):
-            LRP = LongRunningProcess.FitUserSelectablePolynomial.FitUserSelectablePolynomial()
-        elif -1 != request.path.find('User-Customizable Polynomial'):
-            LRP = LongRunningProcess.FitUserCustomizablePolynomial.FitUserCustomizablePolynomial()
-        elif -1 != request.path.find('User-Selectable Rational'):
-            LRP = LongRunningProcess.FitUserSelectableRational.FitUserSelectableRational()
-        elif -1 != request.path.find('Spline'):
-            LRP = LongRunningProcess.FitSpline.FitSpline()
-        else:
-            LRP = LongRunningProcess.FitOneEquation.FitOneEquation()
-    elif -1 != request.path.find('CharacterizeData/'):
-        LRP = LongRunningProcess.CharacterizeData.CharacterizeData()        
-    elif -1 != request.path.find('StatisticalDistributions/'):
-        LRP = LongRunningProcess.StatisticalDistributions.StatisticalDistributions()
-    elif -1 != request.path.find('FunctionFinder__1___/'):
+    if -1 != request.path.find('FunctionFinder__1___/'):
         LRP = LongRunningProcess.FunctionFinder.FunctionFinder()        
     elif -1 != request.path.find('FunctionFinderResults/'):
         if request.method != 'GET': # send an error message
