@@ -131,7 +131,34 @@ You must provide any weights you wish to use.
 
     def GetParallelProcessCount(self):
 
-        return 0
+        # limit based on free memory
+        f = os.popen('vmstat', 'r')
+        f.readline()
+        f.readline()
+        line = f.readline()
+        f.close()
+        freeRAM = line.split()[3]
+        cache = line.split()[5]
+        ppCount = int((float(freeRAM) + float(cache)) / 80000.0)
+
+        if ppCount > multiprocessing.cpu_count(): # *three* extra processes
+            ppCount = multiprocessing.cpu_count()
+        if ppCount < 1: # need at least one process
+            ppCount = 1
+
+        # now limit based on CPU load
+        f = open('/proc/loadavg', 'r')
+        line = f.readline()
+        f.close()
+        load = float(line.split()[0])
+        if load > (float(multiprocessing.cpu_count()) + 0.5) and ppCount > 3:
+            ppCount = 3
+        if load > (float(multiprocessing.cpu_count()) + 1.0) and ppCount > 2:
+            ppCount = 2
+        if load > (float(multiprocessing.cpu_count()) + 1.5) and ppCount > 1:
+            ppCount = 1
+
+        return ppCount
 
 
     def CreateReportPDF(self):
