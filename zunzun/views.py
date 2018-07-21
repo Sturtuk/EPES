@@ -9,7 +9,7 @@ from django.views.decorators.cache import cache_page
 from django.contrib.sessions.backends.db import SessionStore
 from django.db import close_old_connections
 from django.core.mail import EmailMessage
-
+import simplejson
 import settings
 import django.http
 
@@ -49,10 +49,10 @@ sys.stdout = sys.stderr # wsgi cannot send to stdout, see http://code.google.com
 @ratelimit(rate='12/m') # if faster than once every five seconds, apply brake in CommonToAllViews() if django_brake installed
 def EvaluateAtAPointView(request):
     import os, sys, time
-    
+
     if CommonToAllViews(request): # any referrer blocks or web request checks processed here
         raise django.http.Http404
-        
+
     # only allow POST for this view
     if request.method != 'POST':
         return HttpResponse('I am not able to process your request.')
@@ -60,10 +60,10 @@ def EvaluateAtAPointView(request):
     # used to read data from session
     if 'session_key_data' not in list(request.session.keys()):
         return HttpResponse('I was unable to read required session data, my apologies. Are session cookies turned off in your browser?')
-    
+
     LRP = LongRunningProcess.FittingBaseClass.FittingBaseClass()
     LRP.session_key_data = request.session['session_key_data']
-    
+
     # instantiate an equation object using session equation family and name
     LRP.dimensionality = LRP.LoadItemFromSessionStore('data', 'dimensionality')
     inEquationName = LRP.LoadItemFromSessionStore('data', 'equationName')
@@ -71,13 +71,13 @@ def EvaluateAtAPointView(request):
     equation = LRP.GetEquationFromNameAndFamily(inEquationName, inEquationFamilyName, checkForSplinesAndUserDefinedFunctionsFlag = 1)
     if not equation: # could not find a matching equation
         return HttpResponse('Could not find the equation "' + str(inEquationName) + '" in the equation family "' + str(inEquationFamilyName) + '".')
-    
+
     # read equation-specific information from session data and assign to equation object
     if equation.splineFlag:
         equation.scipySpline = LRP.LoadItemFromSessionStore('data', 'scipySpline')
     elif equation.userDefinedFunctionFlag:
         equation.userDefinedFunctionText = LRP.LoadItemFromSessionStore('data', 'udfEditor_' + str(equation.GetDimensionality()) + 'D')
-        equation.ParseAndCompileUserFunctionString(equation.userDefinedFunctionText)        
+        equation.ParseAndCompileUserFunctionString(equation.userDefinedFunctionText)
     elif equation.userSelectablePolynomialFlag:
         equation.xPolynomialOrder = LRP.LoadItemFromSessionStore('data', 'xPolynomialOrder')
         equation.yPolynomialOrder = LRP.LoadItemFromSessionStore('data', 'yPolynomialOrder')
@@ -93,14 +93,14 @@ def EvaluateAtAPointView(request):
         equation.fittingTarget = LRP.LoadItemFromSessionStore('data', 'fittingTarget')
 
     equation.solvedCoefficients = LRP.LoadItemFromSessionStore('data', 'solvedCoefficients')
-    
+
     # make bound Django form and call form.is_valid()
     try:
         evaluationForm = eval('forms.EvaluateAtAPointForm_' + str(LRP.dimensionality) + 'D(request.POST)')
     except:
         time.sleep(1.0)
         evaluationForm = eval('forms.EvaluateAtAPointForm_' + str(LRP.dimensionality) + 'D(request.POST)')
-        
+
     if not evaluationForm.is_valid():
         return HttpResponse('Invalid data submitted, please try again.')
 
@@ -145,7 +145,10 @@ def ConvertSecondsToHMS(seconds):
 def StatusView(request):
     import os, sys, time
 
+
+
     try:
+
         session_status = SessionStore(request.session['session_key_status'])
     except:
         return HttpResponse("I could not read your session data, please try again.")
@@ -161,13 +164,15 @@ def StatusView(request):
             except:
                 time.sleep(0.5)
                 session_status.save()
-    
+
             # is this a file or a URL
             if redirect.startswith(settings.TEMP_FILES_DIR):
                 s = open(redirect, 'r').read()
-                return HttpResponse(s)
+                json_stuff = simplejson.dumps({"status": s })
+                return HttpResponse(json_stuff, content_type="application/json")
             else: # URL
-                return HttpResponseRedirect(redirect)
+                json_stuff = simplejson.dumps({"status": redirect})
+                return HttpResponse(json_stuff, content_type="application/json")
 
     session_status['time_of_last_status_check'] = pickle.dumps(time.time())
     try: # database can lock, sleep and retry
@@ -175,54 +180,21 @@ def StatusView(request):
     except:
         time.sleep(0.5)
         session_status.save()
-    
+
     try:
         currentStatus = pickle.loads(session_status['currentStatus'])
         startTime = pickle.loads(session_status['start_time'])
         timeStamp = pickle.loads(session_status['timestamp'])
     except:
         return HttpResponse("I could not read your session data, my apologies. This is usually caused by a stale browser cookie. Please delete the zunzunsite3 browser cookie and try again.")
-    
+
     # reload every three seconds
-    s = '''<html><head><meta HTTP-EQUIV=REFRESH CONTENT="3; URL='/StatusAndResults/'">
-    <link rel="icon" href="/temp/static_images/favicon.ico" type="image/x-icon">
-    <link rel="shortcut icon" href="/temp/static_images/favicon.ico" type="image/x-icon">
-    </head><body>'''
-    s += currentStatus
-    s += '<br><br><br><br>'
-    s += '<pre>'
-    s += 'Elapsed time: ' + ConvertSecondsToHMS(time.time() - startTime) + ' (hh:mm:ss)'
-    s += '\n'
-    s += '\n'
-    s += 'Current time on server: ' + time.asctime(time.localtime(time.time()))[:-5]
-    s += '\n'
-    s += 'Time of last update   : ' + time.asctime(time.localtime(timeStamp))[:-5]
-    
-    loadavg = os.getloadavg()
-    s += '\n\n'
-    s += 'Server load average for the past 1 minute:   ' + str(loadavg[0]) + '\n'
-    s += 'Server load average for the past 5 minutes:  ' + str(loadavg[1]) + '\n'
-    s += 'Server load average for the past 15 minutes: ' + str(loadavg[2]) + '\n\n'
-    
-    s += '</pre>'
-    coreCount = str(multiprocessing.cpu_count())
-    s += '''
-<BR><BR>
-<TABLE>
-<TR><TD align=left>
-Load < %s means the server cores are running with a light load.
-</TD></TR>
-<TR><TD align=left>
-Load = %s means the server cores each average 100%% CPU with a single user.
-</TD></TR>
-<TR><TD align=left>
-Load > %s means the server cores each average 100%% CPU with multiple users.
-</TD></TR>
-</TABLE>
-''' % (coreCount, coreCount, coreCount)
-    s += '</body></html>'
-    
-    return HttpResponse(s)
+    resp = [
+            "status"
+    ]
+
+    json_stuff = simplejson.dumps({"status": ["processing"]})
+    return HttpResponse(json_stuff, content_type="application/json")
 
 
 @cache_control(no_cache=True)
@@ -230,11 +202,31 @@ Load > %s means the server cores each average 100%% CPU with multiple users.
 def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', inEquationName=''): # from urls.py, inDimensionality can only be '1', '2' or '3'
     import os, sys, time
 
-    if -1 != request.path.find('FunctionFinder__1___/'):
-        LRP = LongRunningProcess.FunctionFinder.FunctionFinder()        
+    if -1 != request.path.find('FitEquation__1___/') or -1 != request.path.find('Equation/'): # redundant but explicit
+        if -1 != request.path.find('UserDefinedFunction'):
+            LRP = LongRunningProcess.FitUserDefinedFunction.FitUserDefinedFunction()
+        elif -1 != request.path.find('User-Selectable Polyfunctional'):
+            LRP = LongRunningProcess.FitUserSelectablePolyfunctional.FitUserSelectablePolyfunctional()
+        elif -1 != request.path.find('User-Selectable Polynomial'):
+            LRP = LongRunningProcess.FitUserSelectablePolynomial.FitUserSelectablePolynomial()
+        elif -1 != request.path.find('User-Customizable Polynomial'):
+            LRP = LongRunningProcess.FitUserCustomizablePolynomial.FitUserCustomizablePolynomial()
+        elif -1 != request.path.find('User-Selectable Rational'):
+            LRP = LongRunningProcess.FitUserSelectableRational.FitUserSelectableRational()
+        elif -1 != request.path.find('Spline'):
+            LRP = LongRunningProcess.FitSpline.FitSpline()
+        else:
+            LRP = LongRunningProcess.FitOneEquation.FitOneEquation()
+    elif -1 != request.path.find('CharacterizeData/'):
+        LRP = LongRunningProcess.CharacterizeData.CharacterizeData()
+    elif -1 != request.path.find('StatisticalDistributions/'):
+        LRP = LongRunningProcess.StatisticalDistributions.StatisticalDistributions()
+    elif -1 != request.path.find('FunctionFinder__1___/'):
+        LRP = LongRunningProcess.FunctionFinder.FunctionFinder()
     elif -1 != request.path.find('FunctionFinderResults/'):
         if request.method != 'GET': # send an error message
-            return HttpResponse("The function finder results view was called incorrectly.")
+            json_stuff = simplejson.dumps({"status": 'The function finder results view was called incorrectly.'})
+            return HttpResponse(json_stuff, content_type="application/json")
         if 'RANK' not in list(request.GET.keys()): # send an error message
             return HttpResponse("The function finder results view was not called correctly.")
         try:
@@ -245,10 +237,10 @@ def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', i
             return HttpResponse('Call to function finder results view was incorrect.')
         LRP = LongRunningProcess.FunctionFinderResults.FunctionFinderResults()
         LRP.rank = rank
-        
+
     else:
         return HttpResponse("I could not understand the web request.")
-        
+
     #####################################################################
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     #####################################################################
@@ -307,23 +299,23 @@ def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', i
         try:
             LRP.CreateBoundInterfaceForm(request)
         except:
-            return HttpResponse(str(sys.exc_info()[0]) + str(sys.exc_info()[1]))
+            return HttpResponse(str(sys.exc_info()[0]) + str(sys.exc_info()[1]), content_type="application/json")
         if not LRP.boundForm.is_valid():
             LRP.items_to_render = {}
             LRP.items_to_render['mainForm'] = LRP.boundForm
             LRP.items_to_render['EvaluateAtAPointForm'] = LRP.evaluationForm
-            return render_to_response('zunzun/invalid_form_data.html', LRP.items_to_render)
+            return HttpResponse(LRP.items_to_render, content_type="application/json")
 
 
     returnString = LRP.TransferFormDataToDataObject(request)
     if returnString:
-        return HttpResponse(returnString)
-    
+        return HttpResponse(returnString, content_type="application/json")
+
 
     if -1 == request.path.find('FunctionFinderResults/') and LRP.equationInstance:
         errorString = LRP.CheckDataForZeroAndPositiveAndNegative()
         if errorString:
-            return render_to_response('zunzun/generic_error.html', {'error':errorString})
+            return HttpResponse(errorString, content_type="application/json")
 
     LRP.SetInitialStatusDataIntoSessionVariables(request)
 
@@ -354,11 +346,11 @@ def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', i
             import traceback
             print('*** Site top-level exception from LRP', str(sys.exc_info()[0]) + '  ' + str(sys.exc_info()[1]))
             sys.stdout.flush()
-        
+
             extraInfo = '\n\nrequest.META info:\n'
             for item in request.META:
                 extraInfo += str(item) + ' : ' + str(request.META[item]) + '\n'
-                
+
             print(traceback.format_exc())
             EmailMessage('Site Top-level exception from LRP',  traceback.format_exc() + '\n\n\n' + extraInfo, to = [settings.EXCEPTION_EMAIL_ADDRESS]).send()
             LRP.SaveDictionaryOfItemsToSessionStore('status', {'currentStatus':"An unknown exception has occurred, and an email with details has been sent to the site administrator. These are sometimes caused by taking the exponent of large numbers."})
@@ -368,9 +360,9 @@ def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', i
                 LRP.pool.close()
                 LRP.pool.join()
             os._exit(0) # kill this child process
-        
+
     # using HTTP_HOST allows dev server
-    return HttpResponseRedirect('http://' + request.META['HTTP_HOST'] + '/StatusAndResults/')
+        return HttpResponse(LRP, content_type="application/json")
 
 
 @cache_control(no_cache=True)
@@ -378,7 +370,7 @@ def LongRunningProcessView(request, inDimensionality, inEquationFamilyName='', i
 def FeedbackView(request):
     import datetime
     import os, sys, time
-    
+
     if CommonToAllViews(request): # any referrer blocks or web request checks processed here
         raise django.http.Http404
 
@@ -424,7 +416,7 @@ def HomePageView(request):
                     fileMtime = os.path.getmtime(itempath) # to sort by creation time
                     dirInfo.append([fileMtime, fileSize, item])
                     totalDirSize += fileSize
-            
+
             # approximately the max temp directory number of bytes
             maxSize = settings.MAX_TEMP_DIR_SIZE_IN_MBYTES * 1000000
             tempDir = settings.TEMP_FILES_DIR
@@ -448,7 +440,7 @@ def HomePageView(request):
     # parent process, start code for view generation
     if CommonToAllViews(request): # any referrer blocks or web request checks processed here
         raise django.http.Http404
-    
+
     request.session['cookie_test'] = 1
 
     items_to_render = {}
@@ -465,7 +457,7 @@ def HomePageView(request):
 @ratelimit(rate='12/m') # if faster than once every five seconds, apply brake in CommonToAllViews() if django_brake installed
 def AllEquationsView(request, inDimensionality, inAllOrStandardOnly): # from urls.py, inDimensionality can only be '2' or '3'
     import os, sys, time
-    
+
     if CommonToAllViews(request): # any referrer blocks or web request checks processed here
         raise django.http.Http404
 
@@ -475,25 +467,25 @@ def AllEquationsView(request, inDimensionality, inAllOrStandardOnly): # from url
         items_to_render['sortedEquationClassPropertiesList'] = GetEquationInfoDictionary(2, inAllOrStandardOnly)
     else:
         items_to_render['sortedEquationClassPropertiesList'] = GetEquationInfoDictionary(3, inAllOrStandardOnly)
-    
+
     if inAllOrStandardOnly == 'All':
         items_to_render['header_text'] = 'ZunZunSite3 List Of All ' + inDimensionality + 'D Equations'
     else:
         items_to_render['header_text'] = 'ZunZunSite3 List Of All Standard ' + inDimensionality + 'D Equations'
-        
+
     items_to_render['dimensionality'] = inDimensionality
-    
+
     return render_to_response('zunzun/list_all_equations.html', items_to_render)
 
 
 def GetEquationInfoDictionary(inDimensionality, inAllOrStandardOnly):
     import inspect
-    
+
     if inDimensionality == 2:
         submodules = inspect.getmembers(pyeq3.Models_2D)
     else:
         submodules = inspect.getmembers(pyeq3.Models_3D)
-        
+
     submoduleNameList = []
     for submodule in submodules:
         if inspect.ismodule(submodule[1]):
@@ -515,21 +507,21 @@ def GetEquationInfoDictionary(inDimensionality, inAllOrStandardOnly):
                 for extendedName in extendedNameList:
                     for equationClass in inspect.getmembers(submodule[1]):
                         if inspect.isclass(equationClass[1]):
-                            
+
                             if equationClass[1].splineFlag or equationClass[1].userDefinedFunctionFlag:
                                 continue
-                            
+
                             # special case as user can select an "offset" flag on the user interface
                             if (equationClass[0] == 'UserSelectableRational' or equationClass[0] == 'UserSelectablePolyfunctional') and extendedName != 'Default': # only need to see default versions of these
                                 continue
-                                                                
+
                             try:
                                 equation = equationClass[1]('SSQABS', extendedName)
                             except:
                                 continue
-                            
+
                             extendedSuffix = equation.extendedVersionHandler.__class__.__name__.split('_')[1]
-                            
+
                             if equation.autoGenerateOffsetForm == False and -1 != extendedSuffix.find('Offset'):
                                 continue
                             if equation.autoGenerateReciprocalForm == False and  -1 != extendedSuffix.find('Reciprocal'):
@@ -540,9 +532,9 @@ def GetEquationInfoDictionary(inDimensionality, inAllOrStandardOnly):
                                 continue
                             if equation.autoGenerateGrowthAndDecayForms == False and -1 != extendedSuffix.find('Decay'):
                                 continue
-                        
+
                             temp = ClassForAttachingProperties()
-                            
+
                             temp.submoduleName = submoduleName
                             temp.extendedName = extendedName
                             temp.name = equation.GetDisplayName()
@@ -565,7 +557,7 @@ def GetEquationInfoDictionary(inDimensionality, inAllOrStandardOnly):
                 allEquationClassPropertiesList[index].firstItemInSubmoduleFlag = True
                 allEquationClassPropertiesList[index-1].lastItemInExtendedNameFlag = True
                 allEquationClassPropertiesList[index].firstItemInExtendedNameFlag = True
-            
+
         if index == 1:
             allEquationClassPropertiesList[index-1].firstItemInExtendedNameFlag = True
         else:
@@ -575,20 +567,20 @@ def GetEquationInfoDictionary(inDimensionality, inAllOrStandardOnly):
 
         allEquationClassPropertiesList[len(allEquationClassPropertiesList)-1].lastItemInSubmoduleFlag = True
         allEquationClassPropertiesList[len(allEquationClassPropertiesList)-1].lastItemInExtendedNameFlag = True
-            
+
     return allEquationClassPropertiesList
 
 
 def CommonToAllViews(request):
     if request.META['REQUEST_METHOD'] not in ['GET', 'POST']:
         raise django.http.Http404
-    
+
     if brake_available:
         # see https://github.com/gmcquillan/django-brake
         was_limited = getattr(request, 'limited', False)
         if was_limited:
             time.sleep(5.0) # sleep for 5 seconds to slow down slammers
-    
+
     return False # all OK
 
 
@@ -619,5 +611,5 @@ def keyFunctionToSortListOfEquationPropertyClasses(item):
         extendedName = '_Default'
     if extendedName == 'Offset':
         extendedName = '_Offset'
-        
+
     return item.submoduleName + extendedName + item.name

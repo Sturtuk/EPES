@@ -181,38 +181,10 @@ You must provide any weights you wish to use.
             myTableStyle = [('ALIGN', (1,1), (-1,-1), 'CENTER'),
                             ('VALIGN', (1,1), (-1,-1), 'MIDDLE')]
 
-            largeLogoImage = reportlab.platypus.Image(os.path.join(settings.TEMP_FILES_DIR, 'static_images/logo.png'), 25 * scale * 3, 25 * scale * 3)
 
-            tableRow = [largeLogoImage,
-                        'ZunZunSite3',
-                        largeLogoImage]
-
-            table = reportlab.platypus.Table([tableRow], style=myTableStyle)
-
-            pageElements.append(table)
 
             pageElements.append(reportlab.platypus.XPreformatted('<br/><br/><br/><br/>', styles['CenteredBodyText']))
 
-            if self.inEquationName:
-                pageElements.append(reportlab.platypus.Paragraph(self.inEquationName, styles['CenteredBodyText']))
-            pageElements.append(reportlab.platypus.XPreformatted('<br/><br/>', styles['CenteredBodyText']))
-
-            titleXML = self.pdfTitleHTML.replace('sup>', 'super>').replace('SUP>', 'super>').replace('<br>', '<br/>').replace('<BR>', '<br/>')
-            pageElements.append(reportlab.platypus.Paragraph(titleXML, styles['CenteredBodyText']))
-
-            pageElements.append(reportlab.platypus.XPreformatted('<br/><br/>', styles['CenteredBodyText']))
-            pageElements.append(reportlab.platypus.Paragraph(time.asctime(time.localtime()) + ' local server time', styles['CenteredBodyText']))
-
-            pageElements.append(reportlab.platypus.PageBreak())
-
-            verseInfo = self.GetVerseInfo()
-            pageElements.append(reportlab.platypus.Paragraph(verseInfo[0], styles['CenteredBodyText']))
-            pageElements.append(reportlab.platypus.XPreformatted('<br/><br/>', styles['CenteredBodyText']))
-            pageElements.append(reportlab.platypus.Paragraph(verseInfo[1], styles['CenteredBodyText']))
-            pageElements.append(reportlab.platypus.XPreformatted('<br/><br/>', styles['CenteredBodyText']))
-            pageElements.append(reportlab.platypus.Paragraph('Read or search the King James Bible online at<br/>http://quod.lib.umich.edu/k/kjv/', styles['CenteredBodyText']))
-
-            pageElements.append(reportlab.platypus.PageBreak())
 
             # make a page for each report output, with report name as page header
             # graphs may not exist if they raised an exception at creation time, trap and handle this condition
@@ -284,29 +256,6 @@ You must provide any weights you wish to use.
                             rebuiltText += newLine + '\n'
                             
                 pageElements.append(reportlab.platypus.Preformatted(rebuiltText, styles['SmallCode']))
-
-                pageElements.append(reportlab.platypus.PageBreak())
-
-            for report in self.graphReports:
-                if report.animationFlag: # pdf files cannot contain GIF animations
-                    continue
-                if os.path.isfile(report.physicalFileLocation):
-                    specialExceptionFileText = report.name
-                    pageElements.append(reportlab.platypus.Paragraph(report.name, styles['CenteredBodyText']))
-                    pageElements.append(reportlab.platypus.XPreformatted('<br/><br/>', styles['CenteredBodyText']))
-                    try:
-                        im = reportlab.platypus.Image(report.physicalFileLocation, self.dataObject.graphWidth * scale, self.dataObject.graphHeight * scale)
-                    except:
-                        time.sleep(1.0)
-                        im = reportlab.platypus.Image(report.physicalFileLocation, self.dataObject.graphWidth * scale, self.dataObject.graphHeight * scale)
-                    im.hAlign = 'CENTER'
-                    pageElements.append(im)
-                    if report.stringList != []:
-                        pageElements.append(reportlab.platypus.Preformatted(report.name, styles['SmallCode']))
-                        pageElements.append(reportlab.platypus.XPreformatted('<br/><br/><br/>', styles['CenteredBodyText']))
-                        for line in report.stringList:
-                            replacedLine = line.replace('<br>', '<br/>').replace('<BR>', '<br/>').replace('<pre>', '').replace('</pre>', '').replace('<tr>', '').replace('</tr>', '').replace('<td>', '').replace('</td>', '').replace('sup>', 'super>').replace('SUP>', 'super>').replace('\r\n', '\n').replace('\n', '<br/>').replace('&nbsp;', ' ')
-                            pageElements.append(reportlab.platypus.XPreformatted(replacedLine, styles['SmallCode']))
 
                 pageElements.append(reportlab.platypus.PageBreak())
 
@@ -464,6 +413,7 @@ You must provide any weights you wish to use.
         
         returnItem = pickle.loads(returnItem)
         return returnItem
+
 
 
     def PerformAllWork(self):

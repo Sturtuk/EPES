@@ -5,7 +5,7 @@ import settings
 
 try: # newer versions of django
     urlpatterns = patterns('',
-        (r"^$", zunzun.views.HomePageView),
+        (r"^$", zunzun.views.LongRunningProcessView),
         
         (r"^StatusAndResults/", zunzun.views.StatusView),
         
