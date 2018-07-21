@@ -234,14 +234,10 @@ You must provide any weights you wish to use.
 
             specialExceptionFileText = 'calling doc.build(pageElements) 0'
             try:
-                doc = reportlab.platypus.SimpleDocTemplate(os.path.join(settings.TEMP_FILES_DIR, self.pdfFileName), pagesize=reportlab.lib.pagesizes.letter)
-                specialExceptionFileText = 'calling doc.build(pageElements) 1'
-                doc.build(pageElements, canvasmaker=NumberedCanvas)
+                return HttpResponse(rebuiltText)
             except:
                 time.sleep(1.0)
-                doc = reportlab.platypus.SimpleDocTemplate(os.path.join(settings.TEMP_FILES_DIR, self.pdfFileName), pagesize=reportlab.lib.pagesizes.letter)
-                specialExceptionFileText = 'calling doc.build(pageElements) 2'
-                doc.build(pageElements, canvasmaker=NumberedCanvas)
+                return HttpResponse(rebuiltText)
         except:
             import traceback
             print('Exception creating PDF file')
